@@ -1,5 +1,5 @@
 python-telegram-bot==20.7
 vosk
-autocorrect
+pyspellchecker
 PyMuPDF
 ffmpeg-python
