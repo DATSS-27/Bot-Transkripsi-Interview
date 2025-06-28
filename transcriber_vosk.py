@@ -1,17 +1,13 @@
 import os
 import json
-import fitz
 import wave
-import subprocess
+import fitz
 import tempfile
+import subprocess
 from vosk import Model, KaldiRecognizer
-from autocorrect import Speller
+from spell_id import correct_indonesian
 
-# Inisialisasi korektor ejaan
-spell = Speller(lang='id')
-
-# Load Vosk once
-model = Model(lang="id")  # Anda bisa ganti dengan path model lokal jika diperlukan
+model = Model(lang="id")  # Pastikan model Bahasa Indonesia sudah diekstrak
 
 def convert_to_wav(input_path):
     output_path = tempfile.mktemp(suffix=".wav")
@@ -24,7 +20,6 @@ def convert_to_wav(input_path):
 def transcribe_audio(path: str) -> str:
     wav_path = convert_to_wav(path)
     wf = wave.open(wav_path, "rb")
-
     rec = KaldiRecognizer(model, wf.getframerate())
     rec.SetWords(True)
 
@@ -41,9 +36,8 @@ def transcribe_audio(path: str) -> str:
     final = json.loads(rec.FinalResult()).get("text", "")
     results.append(final)
 
-    # Gabungkan dan koreksi otomatis
     raw_text = " ".join(results)
-    corrected = spell(raw_text)
+    corrected = correct_indonesian(raw_text)
     return corrected.strip()
 
 def transcribe_pdf(pdf_path: str) -> str:
