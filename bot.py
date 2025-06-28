@@ -19,7 +19,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 # /start command text
 def start_text():
     return (
-        "Halo! Kirim file audio (voice note, mp3, ogg) atau PDF transkrip wawancara. "
+        "Halo Sayang❣️❣️❣️, Kirim file audio atau PDF transkrip wawancara. "
         "Saya akan mengubahnya menjadi teks transkripsi yang akurat dan jelas untuk analisis lanjutan."
     )
 
@@ -52,7 +52,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("Ukuran file terlalu besar. Maksimum 10MB.")
         return
 
-    await msg.reply_text("Menerima file, memproses transkripsi...")
+    await msg.reply_text("Tunggu neh Yaaa...")
     filepath = await save_file(file_obj, ext)
 
     try:
@@ -71,7 +71,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open(text_path, 'w', encoding='utf-8') as f:
         f.write(transcript)
 
-    await msg.reply_text("Berikut teks transkripsi:")
+    await msg.reply_text("Ini Sayanggg")
     await msg.reply_document(document=InputFile(text_path), caption="Transkripsi wawancara.")
 
     # Hapus file sementara agar tidak penuhi storage
