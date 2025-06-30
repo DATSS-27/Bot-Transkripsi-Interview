@@ -1,8 +1,9 @@
 import os
 import logging
+import tempfile
 from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
-from transcriber_vosk import transcribe_audio, transcribe_pdf  # Menggunakan Vosk (gratis) untuk transkripsi
+from transcriber_vosk import transcribe_audio, transcribe_pdf
 
 # Setup logging
 def setup_logging():
@@ -11,81 +12,87 @@ def setup_logging():
         level=logging.INFO
     )
 
-# Bot token and directories
+# Token dan folder download
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or "YOUR_BOT_TOKEN"
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# /start command text
+# Text saat /start
 def start_text():
     return (
-        "Halo Sayang❣️❣️❣️, Kirim file audio atau PDF transkrip wawancara. "
-        "Saya akan mengubahnya menjadi teks transkripsi yang akurat dan jelas untuk analisis lanjutan."
+        "Halo Sayang❣️ Kirim file audio (voice/mp3/ogg) atau PDF transkrip wawancara.\n"
+        "Aku akan ubah jadi teks yang rapi buat kamu ✨"
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(start_text())
 
-# Save incoming file
-def save_file(file_obj, ext):
-    filepath = os.path.join(DOWNLOAD_DIR, f"{file_obj.file_id}.{ext}")
-    return file_obj.get_file().download_to_drive(filepath)
+# Simpan file ke direktori sementara
+async def save_file_to_temp(file_obj, ext):
+    file = await file_obj.get_file()
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}", dir=DOWNLOAD_DIR)
+    await file.download_to_drive(custom_path=tmp_file.name)
+    return tmp_file.name
 
-# Handle file messages
+# Handle file kiriman user
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
-    # Identify file type
+    file_obj, ext, method = None, None, None
+
     if msg.voice:
         file_obj, ext, method = msg.voice, 'ogg', 'audio'
     elif msg.audio:
         file_obj, ext, method = msg.audio, 'mp3', 'audio'
-    elif msg.document and msg.document.mime_type in ['application/pdf', 'text/plain']:
-        file_obj = msg.document
-        ext = 'pdf' if msg.document.mime_type == 'application/pdf' else 'txt'
-        method = 'pdf'
-    else:
-        await msg.reply_text("Format tidak didukung. Mohon kirim audio (voice/mp3/ogg) atau PDF/text.")
+    elif msg.document:
+        mime = msg.document.mime_type
+        if mime == 'application/pdf':
+            file_obj, ext, method = msg.document, 'pdf', 'pdf'
+        elif mime in ['text/plain']:
+            file_obj, ext, method = msg.document, 'txt', 'pdf'
+
+    if not file_obj:
+        await msg.reply_text("Sayang, file kamu nggak bisa aku baca 😢. Kirim audio (mp3/ogg/voice) atau PDF/text yaa.")
         return
 
-    # Batasi ukuran file (mis. 10MB)
     if file_obj.file_size > 10 * 1024 * 1024:
-        await msg.reply_text("Ukuran file terlalu besar. Maksimum 10MB.")
+        await msg.reply_text("File-nya kegedean, Sayang 😵. Maksimal 10MB ya.")
         return
 
-    await msg.reply_text("Tunggu neh Yaaa...")
-    filepath = await save_file(file_obj, ext)
+    await msg.reply_text("Tunggu bentar yaaa, aku kerjain dulu... 💪")
 
     try:
+        file_path = await save_file_to_temp(file_obj, ext)
+
         if method == 'audio':
-            transcript = transcribe_audio(filepath)
+            transcript = transcribe_audio(file_path)
         else:
-            transcript = transcribe_pdf(filepath)
+            transcript = transcribe_pdf(file_path)
+
+        transcript_path = file_path.replace(f".{ext}", "_transcript.txt")
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            f.write(transcript)
+
+        await msg.reply_document(document=InputFile(transcript_path), caption="Transkripsi udah jadi Sayang ❣️")
+
     except Exception as e:
-        logging.error(f"Error during transcription: {e}")
-        await msg.reply_text("Gagal transkripsi. Coba lagi nanti.")
-        os.remove(filepath)
-        return
+        logging.exception("Error saat transkripsi")
+        await msg.reply_text("Maaf Sayang, gagal transkripsi 😭. Coba lagi nanti yaa.")
+    finally:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            if 'transcript_path' in locals() and os.path.exists(transcript_path):
+                os.remove(transcript_path)
+        except Exception:
+            pass
 
-    # Kirim hasil transkripsi
-    text_path = os.path.join(DOWNLOAD_DIR, f"transcript_{file_obj.file_id}.txt")
-    with open(text_path, 'w', encoding='utf-8') as f:
-        f.write(transcript)
-
-    await msg.reply_text("Ini Sayanggg")
-    await msg.reply_document(document=InputFile(text_path), caption="Transkripsi wawancara.")
-
-    # Hapus file sementara agar tidak penuhi storage
-    os.remove(filepath)
-    os.remove(text_path)
-
-# Main entry
+# Entry utama
 if __name__ == '__main__':
     setup_logging()
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler('start', start))
-    file_filter = filters.VOICE | filters.AUDIO | filters.Document.FILE
-    app.add_handler(MessageHandler(file_filter, handle_file))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO | filters.Document.ALL, handle_file))
 
-    logging.info("Transcription bot running...")
+    logging.info("Transcription bot is running...")
     app.run_polling()
